@@ -94,8 +94,11 @@ async function waitForServer(port: number, timeout = 30000): Promise<void> {
 function startServer(port: number): ChildProcess {
   const standaloneDir = path.join(process.resourcesPath, 'standalone');
   const serverPath = path.join(standaloneDir, 'server.js');
-  const nodePath = findNodePath();
-  const useElectronAsNode = nodePath === process.execPath;
+
+  // Always use Electron's built-in Node.js in packaged mode.
+  // electron-builder's @electron/rebuild compiles native modules (better-sqlite3)
+  // for Electron's Node ABI, so we must use the matching runtime.
+  const nodePath = process.execPath;
 
   console.log(`Using Node.js: ${nodePath}`);
   console.log(`Server path: ${serverPath}`);
@@ -108,12 +111,9 @@ function startServer(port: number): ChildProcess {
     PORT: String(port),
     HOSTNAME: '127.0.0.1',
     CLAUDE_GUI_DATA_DIR: app.getPath('userData'),
+    ELECTRON_RUN_AS_NODE: '1',
     PATH: `/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:${process.env.PATH || ''}`,
   };
-
-  if (useElectronAsNode) {
-    env.ELECTRON_RUN_AS_NODE = '1';
-  }
 
   const child = spawn(nodePath, [serverPath], {
     env,
