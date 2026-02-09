@@ -25,6 +25,8 @@ import { cn } from "@/lib/utils";
 interface NavRailProps {
   chatListOpen: boolean;
   onToggleChatList: () => void;
+  hasUpdate?: boolean;
+  skipPermissionsActive?: boolean;
 }
 
 const navItems = [
@@ -33,7 +35,7 @@ const navItems = [
   { href: "/settings", label: "Settings", icon: Settings02Icon },
 ] as const;
 
-export function NavRail({ chatListOpen, onToggleChatList }: NavRailProps) {
+export function NavRail({ chatListOpen, onToggleChatList, hasUpdate, skipPermissionsActive }: NavRailProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
@@ -102,20 +104,25 @@ export function NavRail({ chatListOpen, onToggleChatList }: NavRailProps) {
                     <span className="sr-only">{item.label}</span>
                   </Button>
                 ) : (
-                  <Button
-                    asChild
-                    variant="ghost"
-                    size="icon"
-                    className={cn(
-                      "h-9 w-9",
-                      isActive && "bg-sidebar-accent text-sidebar-accent-foreground"
+                  <div className="relative">
+                    <Button
+                      asChild
+                      variant="ghost"
+                      size="icon"
+                      className={cn(
+                        "h-9 w-9",
+                        isActive && "bg-sidebar-accent text-sidebar-accent-foreground"
+                      )}
+                    >
+                      <Link href={item.href}>
+                        <HugeiconsIcon icon={item.icon} className="h-4 w-4" />
+                        <span className="sr-only">{item.label}</span>
+                      </Link>
+                    </Button>
+                    {item.href === "/settings" && hasUpdate && (
+                      <span className="absolute top-0.5 right-0.5 h-2 w-2 rounded-full bg-blue-500" />
                     )}
-                  >
-                    <Link href={item.href}>
-                      <HugeiconsIcon icon={item.icon} className="h-4 w-4" />
-                      <span className="sr-only">{item.label}</span>
-                    </Link>
-                  </Button>
+                  </div>
                 )}
               </TooltipTrigger>
               <TooltipContent side="right">{item.label}</TooltipContent>
@@ -124,8 +131,21 @@ export function NavRail({ chatListOpen, onToggleChatList }: NavRailProps) {
         })}
       </nav>
 
-      {/* Bottom: theme toggle */}
+      {/* Bottom: skip-permissions indicator + theme toggle */}
       <div className="mt-auto flex flex-col items-center gap-2">
+        {skipPermissionsActive && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex h-8 w-8 items-center justify-center">
+                <span className="relative flex h-3 w-3">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-400 opacity-75" />
+                  <span className="relative inline-flex h-3 w-3 rounded-full bg-orange-500" />
+                </span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="right">Auto-approve is ON</TooltipContent>
+          </Tooltip>
+        )}
         {mounted && (
           <Tooltip>
             <TooltipTrigger asChild>

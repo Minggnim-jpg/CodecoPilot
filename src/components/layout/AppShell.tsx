@@ -6,9 +6,13 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { NavRail } from "./NavRail";
 import { ChatListPanel } from "./ChatListPanel";
 import { RightPanel } from "./RightPanel";
+import { UpdateDialog } from "./UpdateDialog";
 import { PanelContext, type PanelContent } from "@/hooks/usePanel";
+import { UpdateContext, type UpdateInfo } from "@/hooks/useUpdate";
 
 const LG_BREAKPOINT = 1024;
+const CHECK_INTERVAL = 8 * 60 * 60 * 1000; // 8 hours
+const DISMISSED_VERSION_KEY = "codepilot_dismissed_update_version";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -56,6 +60,80 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => mql.removeEventListener("change", handler);
   }, [isChatRoute]);
 
+  // --- Skip-permissions indicator ---
+  const [skipPermissionsActive, setSkipPermissionsActive] = useState(false);
+
+  const fetchSkipPermissions = useCallback(async () => {
+    try {
+      const res = await fetch("/api/settings/app");
+      if (res.ok) {
+        const data = await res.json();
+        setSkipPermissionsActive(data.settings?.dangerously_skip_permissions === "true");
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Poll periodically so the indicator stays in sync when settings change
+  useEffect(() => {
+    fetchSkipPermissions();
+    const id = setInterval(fetchSkipPermissions, 5000);
+    return () => clearInterval(id);
+  }, [fetchSkipPermissions]);
+
+  // --- Update check state ---
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [showDialog, setShowDialog] = useState(false);
+
+  const checkForUpdates = useCallback(async () => {
+    setChecking(true);
+    try {
+      const res = await fetch("/api/app/updates");
+      if (!res.ok) return;
+      const data: UpdateInfo = await res.json();
+      setUpdateInfo(data);
+
+      if (data.updateAvailable) {
+        const dismissed = localStorage.getItem(DISMISSED_VERSION_KEY);
+        if (dismissed !== data.latestVersion) {
+          setShowDialog(true);
+        }
+      }
+    } catch {
+      // silently ignore network errors
+    } finally {
+      setChecking(false);
+    }
+  }, []);
+
+  const dismissUpdate = useCallback(() => {
+    setShowDialog(false);
+    if (updateInfo?.latestVersion) {
+      localStorage.setItem(DISMISSED_VERSION_KEY, updateInfo.latestVersion);
+    }
+  }, [updateInfo]);
+
+  // Check on mount + every 8 hours
+  useEffect(() => {
+    checkForUpdates();
+    const id = setInterval(checkForUpdates, CHECK_INTERVAL);
+    return () => clearInterval(id);
+  }, [checkForUpdates]);
+
+  const updateContextValue = useMemo(
+    () => ({
+      updateInfo,
+      checking,
+      checkForUpdates,
+      dismissUpdate,
+      showDialog,
+      setShowDialog,
+    }),
+    [updateInfo, checking, checkForUpdates, dismissUpdate, showDialog]
+  );
+
   const panelContextValue = useMemo(
     () => ({
       panelOpen,
@@ -77,25 +155,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <PanelContext.Provider value={panelContextValue}>
-      <TooltipProvider delayDuration={300}>
-        <div className="flex h-screen overflow-hidden">
-          <NavRail
-            chatListOpen={chatListOpen}
-            onToggleChatList={() => setChatListOpen(!chatListOpen)}
-          />
-          <ChatListPanel open={chatListOpen} />
-          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-            {/* Electron draggable title bar region */}
-            <div
-              className="h-11 w-full shrink-0"
-              style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+    <UpdateContext.Provider value={updateContextValue}>
+      <PanelContext.Provider value={panelContextValue}>
+        <TooltipProvider delayDuration={300}>
+          <div className="flex h-screen overflow-hidden">
+            <NavRail
+              chatListOpen={chatListOpen}
+              onToggleChatList={() => setChatListOpen(!chatListOpen)}
+              hasUpdate={updateInfo?.updateAvailable ?? false}
+              skipPermissionsActive={skipPermissionsActive}
             />
-            <main className="relative flex-1 overflow-hidden">{children}</main>
+            <ChatListPanel open={chatListOpen} />
+            <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+              {/* Electron draggable title bar region */}
+              <div
+                className="h-11 w-full shrink-0"
+                style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+              />
+              <main className="relative flex-1 overflow-hidden">{children}</main>
+            </div>
+            {isChatDetailRoute && <RightPanel />}
           </div>
-          {isChatDetailRoute && <RightPanel />}
-        </div>
-      </TooltipProvider>
-    </PanelContext.Provider>
+          <UpdateDialog />
+        </TooltipProvider>
+      </PanelContext.Provider>
+    </UpdateContext.Provider>
   );
 }

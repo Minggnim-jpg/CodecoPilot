@@ -245,13 +245,22 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
           }
         }
 
+        // Check if dangerously_skip_permissions is enabled in app settings
+        const skipPermissions = getSetting('dangerously_skip_permissions') === 'true';
+
         const queryOptions: Options = {
           cwd: workingDirectory || process.cwd(),
           abortController,
           includePartialMessages: true,
-          permissionMode: (permissionMode as Options['permissionMode']) || 'acceptEdits',
+          permissionMode: skipPermissions
+            ? 'bypassPermissions'
+            : ((permissionMode as Options['permissionMode']) || 'acceptEdits'),
           env: sdkEnv,
         };
+
+        if (skipPermissions) {
+          queryOptions.allowDangerouslySkipPermissions = true;
+        }
 
         // Find claude binary for packaged app where PATH is limited
         const claudePath = findClaudePath();
