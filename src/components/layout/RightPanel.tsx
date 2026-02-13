@@ -133,9 +133,9 @@ export function RightPanel({ width }: RightPanelProps) {
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-auto p-4 space-y-4">
+      <div className="flex flex-1 flex-col overflow-hidden p-4 space-y-4">
         {/* Name - editable */}
-        <div>
+        <div className="shrink-0">
           <label className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-1.5 block">Name</label>
           {isEditingName ? (
             <div className="flex items-center gap-1.5">
@@ -167,12 +167,12 @@ export function RightPanel({ width }: RightPanelProps) {
         </div>
 
         {/* Divider */}
-        <div className="h-px bg-border/50" />
+        <div className="h-px bg-border/50 shrink-0" />
 
-        {/* Files — always show FileTree */}
-        <div className="flex flex-col min-h-0">
-          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-1.5 block">Files</span>
-          <div className="overflow-hidden">
+        {/* Files — always show FileTree, fill remaining space */}
+        <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
+          <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70 mb-1.5 block shrink-0">Files</span>
+          <div className="flex-1 overflow-hidden">
             <FileTree
               workingDirectory={workingDirectory}
               onFileSelect={handleFileSelect}

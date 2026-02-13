@@ -150,9 +150,9 @@ export function FileTree({ workingDirectory, onFileSelect, onFileAdd }: FileTree
   );
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col h-full min-h-0">
       {/* Header */}
-      <div className="flex items-center gap-2 p-2 border-b border-border/30">
+      <div className="flex items-center gap-2 p-2 border-b border-border/30 shrink-0">
         <p className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground" title={workingDirectory}>
           {workingDirectory || 'No directory selected'}
         </p>
@@ -169,7 +169,7 @@ export function FileTree({ workingDirectory, onFileSelect, onFileAdd }: FileTree
       </div>
 
       {/* Search */}
-      <div className="relative p-2 border-b border-border/30">
+      <div className="relative p-2 border-b border-border/30 shrink-0">
         <HugeiconsIcon icon={Search01Icon} className="absolute left-4 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder="Filter files..."
@@ -180,7 +180,7 @@ export function FileTree({ workingDirectory, onFileSelect, onFileAdd }: FileTree
       </div>
 
       {/* Tree */}
-      <div className="max-h-[400px] overflow-auto">
+      <div className="flex-1 overflow-auto">
         {loading && tree.length === 0 ? (
           <div className="flex items-center justify-center py-8">
             <HugeiconsIcon icon={RefreshIcon} className="h-4 w-4 animate-spin text-muted-foreground" />
