@@ -1,6 +1,6 @@
-import { app, BrowserWindow, nativeImage, dialog, session, utilityProcess } from 'electron';
+import { app, BrowserWindow, nativeImage, dialog, session, utilityProcess, ipcMain } from 'electron';
 import path from 'path';
-import { execFileSync } from 'child_process';
+import { execFileSync, spawn, ChildProcess } from 'child_process';
 import fs from 'fs';
 import net from 'net';
 import os from 'os';
@@ -13,6 +13,30 @@ let serverExited = false;
 let serverExitCode: number | null = null;
 let userShellEnv: Record<string, string> = {};
 let isQuitting = false;
+
+// --- Install orchestrator ---
+interface InstallStep {
+  id: string;
+  label: string;
+  status: 'pending' | 'running' | 'success' | 'failed' | 'skipped';
+  error?: string;
+}
+
+interface InstallState {
+  status: 'idle' | 'running' | 'success' | 'failed' | 'cancelled';
+  currentStep: string | null;
+  steps: InstallStep[];
+  logs: string[];
+}
+
+let installState: InstallState = {
+  status: 'idle',
+  currentStep: null,
+  steps: [],
+  logs: [],
+};
+
+let installProcess: ChildProcess | null = null;
 
 const isDev = !app.isPackaged;
 
@@ -141,6 +165,35 @@ function loadUserShellEnv(): Record<string, string> {
   }
 }
 
+/**
+ * Build an expanded PATH that includes common locations for node, npm globals,
+ * claude, nvm, homebrew, etc. Shared by the server launcher and install orchestrator.
+ */
+function getExpandedShellPath(): string {
+  const home = os.homedir();
+  const shellPath = userShellEnv.PATH || process.env.PATH || '';
+  const sep = path.delimiter;
+
+  if (process.platform === 'win32') {
+    const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
+    const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+    const winExtra = [
+      path.join(appData, 'npm'),
+      path.join(localAppData, 'npm'),
+      path.join(home, '.npm-global', 'bin'),
+      path.join(home, '.local', 'bin'),
+      path.join(home, '.claude', 'bin'),
+    ];
+    const allParts = [shellPath, ...winExtra].join(sep).split(sep).filter(Boolean);
+    return [...new Set(allParts)].join(sep);
+  } else {
+    const basePath = `/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin`;
+    const raw = `${basePath}:${home}/.npm-global/bin:${home}/.local/bin:${home}/.claude/bin:${shellPath}`;
+    const allParts = raw.split(':').filter(Boolean);
+    return [...new Set(allParts)].join(':');
+  }
+}
+
 function getPort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -202,28 +255,7 @@ function startServer(port: number): Electron.UtilityProcess {
   serverExitCode = null;
 
   const home = os.homedir();
-  const shellPath = userShellEnv.PATH || process.env.PATH || '';
-  const sep = path.delimiter; // ';' on Windows, ':' on Unix
-
-  let constructedPath: string;
-  if (process.platform === 'win32') {
-    const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
-    const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
-    const winExtra = [
-      path.join(appData, 'npm'),
-      path.join(localAppData, 'npm'),
-      path.join(home, '.npm-global', 'bin'),
-      path.join(home, '.local', 'bin'),
-      path.join(home, '.claude', 'bin'),
-    ];
-    const allParts = [shellPath, ...winExtra].join(sep).split(sep).filter(Boolean);
-    constructedPath = [...new Set(allParts)].join(sep);
-  } else {
-    const basePath = `/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin`;
-    const raw = `${basePath}:${home}/.npm-global/bin:${home}/.local/bin:${home}/.claude/bin:${shellPath}`;
-    const allParts = raw.split(':').filter(Boolean);
-    constructedPath = [...new Set(allParts)].join(':');
-  }
+  const constructedPath = getExpandedShellPath();
 
   const env: Record<string, string> = {
     ...userShellEnv,
@@ -353,6 +385,227 @@ app.whenReady().then(async () => {
     app.dock.setIcon(nativeImage.createFromPath(iconPath));
   }
 
+  // --- Install wizard IPC handlers ---
+
+  ipcMain.handle('install:check-prerequisites', async () => {
+    const expandedPath = getExpandedShellPath();
+    const execEnv = { ...process.env, ...userShellEnv, PATH: expandedPath };
+    const execOpts = { timeout: 5000, encoding: 'utf-8' as const, env: execEnv };
+
+    let hasNode = false;
+    let nodeVersion: string | undefined;
+    try {
+      const result = execFileSync('node', ['--version'], execOpts);
+      nodeVersion = result.trim();
+      hasNode = true;
+    } catch {
+      // node not found
+    }
+
+    let hasClaude = false;
+    let claudeVersion: string | undefined;
+    try {
+      const claudeOpts = process.platform === 'win32'
+        ? { ...execOpts, shell: true }
+        : execOpts;
+      const result = execFileSync('claude', ['--version'], claudeOpts);
+      claudeVersion = result.trim();
+      hasClaude = true;
+    } catch {
+      // claude not found
+    }
+
+    return { hasNode, nodeVersion, hasClaude, claudeVersion };
+  });
+
+  ipcMain.handle('install:start', () => {
+    if (installState.status === 'running') {
+      return { error: 'Installation is already running' };
+    }
+
+    // Reset state
+    installState = {
+      status: 'running',
+      currentStep: null,
+      steps: [
+        { id: 'check-node', label: 'Checking Node.js', status: 'pending' },
+        { id: 'install-claude', label: 'Installing Claude Code', status: 'pending' },
+        { id: 'verify', label: 'Verifying installation', status: 'pending' },
+      ],
+      logs: [],
+    };
+
+    const expandedPath = getExpandedShellPath();
+    const execEnv: Record<string, string> = {
+      ...userShellEnv,
+      ...(process.env as Record<string, string>),
+      ...userShellEnv,
+      PATH: expandedPath,
+    };
+
+    function sendProgress() {
+      mainWindow?.webContents.send('install:progress', installState);
+    }
+
+    function setStep(id: string, status: InstallStep['status'], error?: string) {
+      const step = installState.steps.find(s => s.id === id);
+      if (step) {
+        step.status = status;
+        step.error = error;
+      }
+      installState.currentStep = id;
+      sendProgress();
+    }
+
+    function addLog(line: string) {
+      installState.logs.push(line);
+      sendProgress();
+    }
+
+    // Run the installation sequence asynchronously
+    (async () => {
+      try {
+        // Step 1: Check node
+        setStep('check-node', 'running');
+        try {
+          const nodeResult = execFileSync('node', ['--version'], {
+            timeout: 5000,
+            encoding: 'utf-8',
+            env: execEnv,
+          });
+          addLog(`Node.js found: ${nodeResult.trim()}`);
+          setStep('check-node', 'success');
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          addLog(`Node.js not found: ${msg}`);
+          setStep('check-node', 'failed', 'Node.js is not installed. Please install Node.js first.');
+          installState.status = 'failed';
+          sendProgress();
+          return;
+        }
+
+        // Step 2: Install Claude Code via npm
+        setStep('install-claude', 'running');
+        addLog('Running: npm install -g @anthropic-ai/claude-code');
+
+        const npmInstallSuccess = await new Promise<boolean>((resolve) => {
+          const isWin = process.platform === 'win32';
+          const npmCmd = isWin ? 'npm.cmd' : 'npm';
+
+          const child = spawn(npmCmd, ['install', '-g', '@anthropic-ai/claude-code'], {
+            env: execEnv,
+            shell: isWin,
+            stdio: ['ignore', 'pipe', 'pipe'],
+          });
+
+          installProcess = child;
+
+          child.stdout?.on('data', (data: Buffer) => {
+            const lines = data.toString().split('\n').filter(Boolean);
+            for (const line of lines) {
+              addLog(line);
+            }
+          });
+
+          child.stderr?.on('data', (data: Buffer) => {
+            const lines = data.toString().split('\n').filter(Boolean);
+            for (const line of lines) {
+              addLog(line);
+            }
+          });
+
+          child.on('error', (err) => {
+            addLog(`npm error: ${err.message}`);
+            resolve(false);
+          });
+
+          child.on('close', (code) => {
+            installProcess = null;
+            if (code === 0) {
+              addLog('npm install completed successfully');
+              resolve(true);
+            } else if (installState.status === 'cancelled') {
+              addLog('Installation was cancelled');
+              resolve(false);
+            } else {
+              addLog(`npm install exited with code ${code}`);
+              resolve(false);
+            }
+          });
+        });
+
+        if (installState.status === 'cancelled') {
+          setStep('install-claude', 'failed', 'Cancelled');
+          return;
+        }
+
+        if (!npmInstallSuccess) {
+          setStep('install-claude', 'failed', 'npm install failed. Check logs for details.');
+          installState.status = 'failed';
+          sendProgress();
+          return;
+        }
+
+        setStep('install-claude', 'success');
+
+        // Step 3: Verify claude is available
+        setStep('verify', 'running');
+        try {
+          const verifyOpts = process.platform === 'win32'
+            ? { timeout: 5000, encoding: 'utf-8' as const, env: execEnv, shell: true }
+            : { timeout: 5000, encoding: 'utf-8' as const, env: execEnv };
+          const claudeResult = execFileSync('claude', ['--version'], verifyOpts);
+          addLog(`Claude Code installed: ${claudeResult.trim()}`);
+          setStep('verify', 'success');
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          addLog(`Verification failed: ${msg}`);
+          setStep('verify', 'failed', 'Claude Code was installed but could not be verified.');
+          installState.status = 'failed';
+          sendProgress();
+          return;
+        }
+
+        installState.status = 'success';
+        installState.currentStep = null;
+        sendProgress();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        addLog(`Unexpected error: ${msg}`);
+        installState.status = 'failed';
+        sendProgress();
+      }
+    })();
+
+    return { ok: true };
+  });
+
+  ipcMain.handle('install:cancel', () => {
+    if (installState.status !== 'running') {
+      return { error: 'No installation is running' };
+    }
+
+    installState.status = 'cancelled';
+
+    if (installProcess) {
+      try {
+        installProcess.kill();
+      } catch {
+        // already dead
+      }
+      installProcess = null;
+    }
+
+    mainWindow?.webContents.send('install:progress', installState);
+    return { ok: true };
+  });
+
+  ipcMain.handle('install:get-logs', () => {
+    return installState.logs;
+  });
+
+  // --- End install wizard IPC handlers ---
+
   try {
     let port: number;
 
@@ -403,6 +656,12 @@ app.on('activate', async () => {
 });
 
 app.on('before-quit', async (e) => {
+  // Kill any running install process
+  if (installProcess) {
+    try { installProcess.kill(); } catch { /* already dead */ }
+    installProcess = null;
+  }
+
   if (serverProcess && !isQuitting) {
     isQuitting = true;
     e.preventDefault();

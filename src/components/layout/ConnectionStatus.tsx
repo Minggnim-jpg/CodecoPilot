@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { InstallWizard } from "@/components/layout/InstallWizard";
 
 interface ClaudeStatus {
   connected: boolean;
@@ -24,6 +25,12 @@ const STABLE_THRESHOLD = 3;
 export function ConnectionStatus() {
   const [status, setStatus] = useState<ClaudeStatus | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+
+  const isElectron =
+    typeof window !== "undefined" &&
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    !!(window as any).electronAPI?.install;
   const stableCountRef = useRef(0);
   const lastConnectedRef = useRef<boolean | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -162,6 +169,20 @@ export function ConnectionStatus() {
                   claude --version
                 </code>
               </div>
+
+              {isElectron && (
+                <div className="pt-2 border-t">
+                  <Button
+                    onClick={() => {
+                      setDialogOpen(false);
+                      setWizardOpen(true);
+                    }}
+                    className="w-full"
+                  >
+                    Install Claude Code Automatically
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 
@@ -175,6 +196,12 @@ export function ConnectionStatus() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <InstallWizard
+        open={wizardOpen}
+        onOpenChange={setWizardOpen}
+        onInstallComplete={handleManualRefresh}
+      />
     </>
   );
 }
