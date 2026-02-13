@@ -669,14 +669,23 @@ app.whenReady().then(async () => {
     }
 
     installState.status = 'cancelled';
+    installState.logs.push('Cancelling installation...');
 
     if (installProcess) {
+      const pid = installProcess.pid;
       try {
-        installProcess.kill();
+        if (process.platform === 'win32' && pid) {
+          // Windows: kill entire process tree (shell: true spawns cmd.exe which
+          // spawns npm/winget — child.kill() only kills the shell, not the tree)
+          spawn('taskkill', ['/T', '/F', '/PID', String(pid)], { stdio: 'ignore' });
+        } else {
+          installProcess.kill();
+        }
       } catch {
         // already dead
       }
       installProcess = null;
+      installState.logs.push('Installation process terminated.');
     }
 
     mainWindow?.webContents.send('install:progress', installState);
@@ -738,9 +747,16 @@ app.on('activate', async () => {
 });
 
 app.on('before-quit', async (e) => {
-  // Kill any running install process
+  // Kill any running install process (tree-kill on Windows)
   if (installProcess) {
-    try { installProcess.kill(); } catch { /* already dead */ }
+    const pid = installProcess.pid;
+    try {
+      if (process.platform === 'win32' && pid) {
+        spawn('taskkill', ['/T', '/F', '/PID', String(pid)], { stdio: 'ignore' });
+      } else {
+        installProcess.kill();
+      }
+    } catch { /* already dead */ }
     installProcess = null;
   }
 

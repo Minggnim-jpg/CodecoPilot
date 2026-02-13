@@ -18,6 +18,7 @@ import {
   LoaderIcon,
   CircleIcon,
   CopyIcon,
+  DownloadIcon,
 } from "lucide-react";
 
 interface InstallProgress {
@@ -40,22 +41,25 @@ interface InstallWizardProps {
 
 type WizardPhase =
   | "checking"
+  | "confirm"
   | "already-installed"
   | "installing"
   | "success"
   | "failed";
+
+interface PrereqResult {
+  hasNode: boolean;
+  nodeVersion?: string;
+  hasClaude: boolean;
+  claudeVersion?: string;
+}
 
 function getInstallAPI() {
   if (typeof window !== "undefined") {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return (window as any).electronAPI?.install as
       | {
-          checkPrerequisites: () => Promise<{
-            hasNode: boolean;
-            nodeVersion?: string;
-            hasClaude: boolean;
-            claudeVersion?: string;
-          }>;
+          checkPrerequisites: () => Promise<PrereqResult>;
           start: (options?: { includeNode?: boolean }) => Promise<void>;
           cancel: () => Promise<void>;
           getLogs: () => Promise<string[]>;
@@ -92,6 +96,7 @@ export function InstallWizard({
   const [progress, setProgress] = useState<InstallProgress | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
+  const [prereqs, setPrereqs] = useState<PrereqResult | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
 
@@ -102,6 +107,17 @@ export function InstallWizard({
   useEffect(() => {
     scrollToBottom();
   }, [logs, scrollToBottom]);
+
+  // Cancel backend install and clean up listener
+  const cancelInstall = useCallback(async () => {
+    const api = getInstallAPI();
+    if (!api) return;
+    try {
+      await api.cancel();
+    } catch {
+      // ignore cancel errors
+    }
+  }, []);
 
   const startInstall = useCallback(async (options?: { includeNode?: boolean }) => {
     const api = getInstallAPI();
@@ -138,9 +154,11 @@ export function InstallWizard({
     setPhase("checking");
     setLogs(["Checking environment..."]);
     setProgress(null);
+    setPrereqs(null);
 
     try {
       const result = await api.checkPrerequisites();
+      setPrereqs(result);
 
       if (result.hasClaude) {
         setLogs((prev) => [
@@ -152,36 +170,33 @@ export function InstallWizard({
         return;
       }
 
-      if (!result.hasNode) {
-        setLogs((prev) => [
-          ...prev,
-          "Node.js not found. Will attempt to install Node.js and Claude Code...",
-        ]);
-        startInstall({ includeNode: true });
-      } else {
+      // Don't auto-install — show confirmation first
+      if (result.hasNode) {
         setLogs((prev) => [
           ...prev,
           `Node.js ${result.nodeVersion} found.`,
-          "Claude Code not found. Starting installation...",
+          "Claude Code CLI not detected.",
         ]);
-        startInstall();
+      } else {
+        setLogs((prev) => [
+          ...prev,
+          "Node.js not found.",
+          "Claude Code CLI not detected.",
+        ]);
       }
+      setPhase("confirm");
     } catch (err: unknown) {
       setPhase("failed");
       const msg = err instanceof Error ? err.message : String(err);
       setLogs((prev) => [...prev, `Error checking prerequisites: ${msg}`]);
     }
-  }, [startInstall]);
-
-  const handleCancel = useCallback(async () => {
-    const api = getInstallAPI();
-    if (!api) return;
-    try {
-      await api.cancel();
-    } catch {
-      // ignore cancel errors
-    }
   }, []);
+
+  // User explicitly clicks "Install" — only then start the actual install
+  const handleConfirmInstall = useCallback(() => {
+    const needsNode = prereqs ? !prereqs.hasNode : false;
+    startInstall({ includeNode: needsNode });
+  }, [prereqs, startInstall]);
 
   const handleCopyLogs = useCallback(async () => {
     try {
@@ -198,6 +213,17 @@ export function InstallWizard({
     onInstallComplete?.();
   }, [onOpenChange, onInstallComplete]);
 
+  // [P1] Close dialog = cancel running install
+  const handleOpenChange = useCallback(
+    async (nextOpen: boolean) => {
+      if (!nextOpen && phase === "installing") {
+        await cancelInstall();
+      }
+      onOpenChange(nextOpen);
+    },
+    [phase, cancelInstall, onOpenChange]
+  );
+
   // Auto-check when dialog opens
   useEffect(() => {
     if (open) {
@@ -205,6 +231,7 @@ export function InstallWizard({
       setLogs([]); // eslint-disable-line react-hooks/set-state-in-effect
       setProgress(null); // eslint-disable-line react-hooks/set-state-in-effect
       setCopied(false); // eslint-disable-line react-hooks/set-state-in-effect
+      setPrereqs(null); // eslint-disable-line react-hooks/set-state-in-effect
       checkPrereqs();
     }
     return () => {
@@ -218,17 +245,19 @@ export function InstallWizard({
   const steps = progress?.steps ?? [];
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Install Claude Code</DialogTitle>
           <DialogDescription>
-            Automatically install Claude Code CLI
+            {phase === "confirm"
+              ? "Claude Code CLI was not detected. Install it now?"
+              : "Automatically install Claude Code CLI"}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Step list */}
+          {/* Step list (only during/after install) */}
           {steps.length > 0 && (
             <div className="space-y-2">
               {steps.map((step) => (
@@ -258,7 +287,7 @@ export function InstallWizard({
             </div>
           )}
 
-          {/* Phase-specific messages */}
+          {/* Phase: checking */}
           {phase === "checking" && steps.length === 0 && (
             <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
               <LoaderIcon className="size-4 animate-spin" />
@@ -266,6 +295,32 @@ export function InstallWizard({
             </div>
           )}
 
+          {/* Phase: confirm — ask user before installing */}
+          {phase === "confirm" && (
+            <div className="space-y-3">
+              <div className="rounded-lg bg-amber-500/10 px-4 py-3 text-sm space-y-1.5">
+                {prereqs && !prereqs.hasNode && (
+                  <p className="text-amber-700 dark:text-amber-400">
+                    Node.js — not found (will be installed via {process.platform === "win32" ? "winget" : "Homebrew"})
+                  </p>
+                )}
+                {prereqs?.hasNode && (
+                  <p className="text-emerald-700 dark:text-emerald-400">
+                    Node.js {prereqs.nodeVersion} — found
+                  </p>
+                )}
+                <p className="text-amber-700 dark:text-amber-400">
+                  Claude Code CLI — not found
+                </p>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Click <strong>Install</strong> to automatically set up{" "}
+                {prereqs && !prereqs.hasNode ? "Node.js and " : ""}Claude Code CLI.
+              </p>
+            </div>
+          )}
+
+          {/* Phase: already-installed */}
           {phase === "already-installed" && (
             <div className="flex items-center gap-3 rounded-lg bg-emerald-500/10 px-4 py-3">
               <CheckIcon className="size-5 text-emerald-500 shrink-0" />
@@ -280,6 +335,7 @@ export function InstallWizard({
             </div>
           )}
 
+          {/* Phase: success */}
           {phase === "success" && (
             <div className="flex items-center gap-3 rounded-lg bg-emerald-500/10 px-4 py-3">
               <CheckIcon className="size-5 text-emerald-500 shrink-0" />
@@ -310,28 +366,40 @@ export function InstallWizard({
         </div>
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleCopyLogs}
-            disabled={logs.length === 0}
-          >
-            <CopyIcon />
-            {copied ? "Copied" : "Copy Logs"}
-          </Button>
+          {logs.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCopyLogs}
+            >
+              <CopyIcon />
+              {copied ? "Copied" : "Copy Logs"}
+            </Button>
+          )}
 
+          {/* Confirm phase: single "Install" button */}
+          {phase === "confirm" && (
+            <Button size="sm" onClick={handleConfirmInstall}>
+              <DownloadIcon />
+              Install
+            </Button>
+          )}
+
+          {/* Installing: cancel button */}
           {phase === "installing" && (
-            <Button variant="destructive" size="sm" onClick={handleCancel}>
+            <Button variant="destructive" size="sm" onClick={cancelInstall}>
               Cancel
             </Button>
           )}
 
+          {/* Failed: retry */}
           {phase === "failed" && (
             <Button size="sm" onClick={checkPrereqs}>
               Retry
             </Button>
           )}
 
+          {/* Success / already-installed: done */}
           {(phase === "success" || phase === "already-installed") && (
             <Button size="sm" onClick={handleDone}>
               Done
