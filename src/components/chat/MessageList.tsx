@@ -95,7 +95,7 @@ export function MessageList({
 
   return (
     <Conversation>
-      <ConversationContent className="mx-auto max-w-3xl px-4 py-6 gap-6">
+      <ConversationContent className="mx-auto max-w-3xl px-4 py-6 gap-6" data-meta-selection-root="true">
         {hasMore && (
           <div className="flex justify-center">
             <button

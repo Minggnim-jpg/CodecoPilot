@@ -75,10 +75,26 @@ module.exports = async function afterPack(context) {
   console.log(`[afterPack] Rebuilt .node file: ${rebuiltSource} (${sourceStats.size} bytes, mtime: ${sourceStats.mtime.toISOString()})`);
 
   // Step 3: Find and replace all better_sqlite3.node in standalone resources
-  // macOS: <appOutDir>/CodePilot.app/Contents/Resources/standalone/...
+  // macOS: <appOutDir>/<YourApp>.app/Contents/Resources/standalone/...
   // Windows/Linux: <appOutDir>/resources/standalone/...
+  function getMacAppBundleName() {
+    const productFilename = context?.packager?.appInfo?.productFilename;
+    if (productFilename) return `${productFilename}.app`;
+    try {
+      const entries = fs.readdirSync(appOutDir, { withFileTypes: true });
+      const app = entries.find((e) => e.isDirectory() && e.name.endsWith('.app'));
+      return app?.name;
+    } catch {
+      return undefined;
+    }
+  }
+
+  const macAppBundleName = platform === 'mac' ? getMacAppBundleName() : undefined;
   const searchRoots = [
-    path.join(appOutDir, 'CodePilot.app', 'Contents', 'Resources', 'standalone'),
+    ...(macAppBundleName
+      ? [path.join(appOutDir, macAppBundleName, 'Contents', 'Resources', 'standalone')]
+      : []),
+    // Fallbacks (some targets/CI layouts differ)
     path.join(appOutDir, 'Contents', 'Resources', 'standalone'),
     path.join(appOutDir, 'resources', 'standalone'),
   ];

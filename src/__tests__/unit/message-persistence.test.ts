@@ -37,8 +37,8 @@ describe('parseMessageContent', () => {
     const blocks: MessageContentBlock[] = [
       { type: 'text', text: 'Reading file...' },
       { type: 'tool_use', id: 'tu_456', name: 'read_file', input: { path: '/package.json' } },
-      { type: 'tool_result', tool_use_id: 'tu_456', content: '{"name": "codepilot"}', is_error: false },
-      { type: 'text', text: 'The package name is codepilot.' },
+      { type: 'tool_result', tool_use_id: 'tu_456', content: '{"name": "codepal"}', is_error: false },
+      { type: 'text', text: 'The package name is codepal.' },
     ];
     const json = JSON.stringify(blocks);
     const result = parseMessageContent(json);

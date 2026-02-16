@@ -11,6 +11,9 @@ import { UpdateDialog } from "./UpdateDialog";
 import { DocPreview } from "./DocPreview";
 import { PanelContext, type PanelContent, type PreviewViewMode } from "@/hooks/usePanel";
 import { UpdateContext, type UpdateInfo } from "@/hooks/useUpdate";
+import { MetaPanelProvider } from "@/components/meta/MetaPanelContext";
+import { SelectionPopover } from "@/components/meta/SelectionPopover";
+import { MetaPanel } from "@/components/meta/MetaPanel";
 
 const CHATLIST_MIN = 180;
 const CHATLIST_MAX = 400;
@@ -30,7 +33,7 @@ function defaultViewMode(filePath: string): PreviewViewMode {
 
 const LG_BREAKPOINT = 1024;
 const CHECK_INTERVAL = 8 * 60 * 60 * 1000; // 8 hours
-const DISMISSED_VERSION_KEY = "codepilot_dismissed_update_version";
+const DISMISSED_VERSION_KEY = "codepal_dismissed_update_version";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -40,11 +43,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Panel width state with localStorage persistence
   const [chatListWidth, setChatListWidth] = useState(() => {
     if (typeof window === "undefined") return 240;
-    return parseInt(localStorage.getItem("codepilot_chatlist_width") || "240");
+    return parseInt(localStorage.getItem("codepal_chatlist_width") || "240");
   });
   const [rightPanelWidth, setRightPanelWidth] = useState(() => {
     if (typeof window === "undefined") return 288;
-    return parseInt(localStorage.getItem("codepilot_rightpanel_width") || "288");
+    return parseInt(localStorage.getItem("codepal_rightpanel_width") || "288");
   });
 
   const handleChatListResize = useCallback((delta: number) => {
@@ -52,7 +55,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
   const handleChatListResizeEnd = useCallback(() => {
     setChatListWidth((w) => {
-      localStorage.setItem("codepilot_chatlist_width", String(w));
+      localStorage.setItem("codepal_chatlist_width", String(w));
       return w;
     });
   }, []);
@@ -62,7 +65,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
   const handleRightPanelResizeEnd = useCallback(() => {
     setRightPanelWidth((w) => {
-      localStorage.setItem("codepilot_rightpanel_width", String(w));
+      localStorage.setItem("codepal_rightpanel_width", String(w));
       return w;
     });
   }, []);
@@ -94,7 +97,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [previewViewMode, setPreviewViewMode] = useState<PreviewViewMode>("source");
   const [docPreviewWidth, setDocPreviewWidth] = useState(() => {
     if (typeof window === "undefined") return 480;
-    return parseInt(localStorage.getItem("codepilot_docpreview_width") || "480");
+    return parseInt(localStorage.getItem("codepal_docpreview_width") || "480");
   });
 
   const setPreviewFile = useCallback((path: string | null) => {
@@ -109,7 +112,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
   const handleDocPreviewResizeEnd = useCallback(() => {
     setDocPreviewWidth((w) => {
-      localStorage.setItem("codepilot_docpreview_width", String(w));
+      localStorage.setItem("codepal_docpreview_width", String(w));
       return w;
     });
   }, []);
@@ -245,45 +248,50 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <UpdateContext.Provider value={updateContextValue}>
       <PanelContext.Provider value={panelContextValue}>
-        <TooltipProvider delayDuration={300}>
-          <div className="flex h-screen overflow-hidden">
-            <NavRail
-              chatListOpen={chatListOpen}
-              onToggleChatList={() => setChatListOpen(!chatListOpen)}
-              hasUpdate={updateInfo?.updateAvailable ?? false}
-              skipPermissionsActive={skipPermissionsActive}
-            />
-            <ChatListPanel open={chatListOpen} width={chatListWidth} />
-            {chatListOpen && (
-              <ResizeHandle side="left" onResize={handleChatListResize} onResizeEnd={handleChatListResizeEnd} />
-            )}
-            <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-              {/* Electron draggable title bar region */}
-              <div
-                className="h-11 w-full shrink-0"
-                style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+        <MetaPanelProvider>
+          <TooltipProvider delayDuration={300}>
+            <div className="flex h-screen overflow-hidden">
+              <NavRail
+                chatListOpen={chatListOpen}
+                onToggleChatList={() => setChatListOpen(!chatListOpen)}
+                hasUpdate={updateInfo?.updateAvailable ?? false}
+                skipPermissionsActive={skipPermissionsActive}
               />
-              <main className="relative flex-1 overflow-hidden">{children}</main>
+              <ChatListPanel open={chatListOpen} width={chatListWidth} />
+              {chatListOpen && (
+                <ResizeHandle side="left" onResize={handleChatListResize} onResizeEnd={handleChatListResizeEnd} />
+              )}
+              <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                {/* Electron draggable title bar region */}
+                <div
+                  className="h-11 w-full shrink-0"
+                  style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+                />
+                <main className="relative flex-1 overflow-hidden">{children}</main>
+              </div>
+              {isChatDetailRoute && previewFile && (
+                <ResizeHandle side="right" onResize={handleDocPreviewResize} onResizeEnd={handleDocPreviewResizeEnd} />
+              )}
+              {isChatDetailRoute && previewFile && (
+                <DocPreview
+                  filePath={previewFile}
+                  viewMode={previewViewMode}
+                  onViewModeChange={setPreviewViewMode}
+                  onClose={() => setPreviewFile(null)}
+                  width={docPreviewWidth}
+                />
+              )}
+              {isChatDetailRoute && panelOpen && (
+                <ResizeHandle side="right" onResize={handleRightPanelResize} onResizeEnd={handleRightPanelResizeEnd} />
+              )}
+              {isChatDetailRoute && <RightPanel width={rightPanelWidth} />}
             </div>
-            {isChatDetailRoute && previewFile && (
-              <ResizeHandle side="right" onResize={handleDocPreviewResize} onResizeEnd={handleDocPreviewResizeEnd} />
-            )}
-            {isChatDetailRoute && previewFile && (
-              <DocPreview
-                filePath={previewFile}
-                viewMode={previewViewMode}
-                onViewModeChange={setPreviewViewMode}
-                onClose={() => setPreviewFile(null)}
-                width={docPreviewWidth}
-              />
-            )}
-            {isChatDetailRoute && panelOpen && (
-              <ResizeHandle side="right" onResize={handleRightPanelResize} onResizeEnd={handleRightPanelResizeEnd} />
-            )}
-            {isChatDetailRoute && <RightPanel width={rightPanelWidth} />}
-          </div>
-          <UpdateDialog />
-        </TooltipProvider>
+
+            <SelectionPopover />
+            <MetaPanel />
+            <UpdateDialog />
+          </TooltipProvider>
+        </MetaPanelProvider>
       </PanelContext.Provider>
     </UpdateContext.Provider>
   );

@@ -50,7 +50,7 @@ function formatRelativeTime(dateStr: string): string {
   return date.toLocaleDateString();
 }
 
-const COLLAPSED_PROJECTS_KEY = "codepilot:collapsed-projects";
+const COLLAPSED_PROJECTS_KEY = "codepal:collapsed-projects";
 
 function loadCollapsedProjects(): Set<string> {
   if (typeof window === 'undefined') return new Set();
@@ -131,7 +131,7 @@ export function ChatListPanel({ open, width }: ChatListPanelProps) {
 
   const handleNewChat = useCallback(async () => {
     const lastDir = typeof window !== 'undefined'
-      ? localStorage.getItem("codepilot:last-working-directory")
+      ? localStorage.getItem("codepal:last-working-directory")
       : null;
 
     if (!lastDir) {
@@ -148,7 +148,7 @@ export function ChatListPanel({ open, width }: ChatListPanelProps) {
       );
       if (!checkRes.ok) {
         // Directory is gone — clear stale value and prompt user
-        localStorage.removeItem("codepilot:last-working-directory");
+        localStorage.removeItem("codepal:last-working-directory");
         setFolderPickerOpen(true);
         return;
       }
@@ -160,7 +160,7 @@ export function ChatListPanel({ open, width }: ChatListPanelProps) {
       });
       if (!res.ok) {
         // Backend rejected it (e.g. INVALID_DIRECTORY) — prompt user
-        localStorage.removeItem("codepilot:last-working-directory");
+        localStorage.removeItem("codepal:last-working-directory");
         setFolderPickerOpen(true);
         return;
       }

@@ -5,8 +5,8 @@ import fs from 'fs';
 import os from 'os';
 import type { ChatSession, Message, SettingsMap, TaskItem, TaskStatus, ApiProvider, CreateProviderRequest, UpdateProviderRequest } from '@/types';
 
-const dataDir = process.env.CLAUDE_GUI_DATA_DIR || path.join(os.homedir(), '.codepilot');
-const DB_PATH = path.join(dataDir, 'codepilot.db');
+const dataDir = process.env.CLAUDE_GUI_DATA_DIR || path.join(os.homedir(), '.codepal');
+const DB_PATH = path.join(dataDir, 'codepal.db');
 
 let db: Database.Database | null = null;
 
@@ -27,6 +27,8 @@ export function getDb(): Database.Database {
         path.join(home, 'Library', 'Application Support', 'Claude GUI', 'codepilot.db'),
         // Old dev-mode fallback
         path.join(process.cwd(), 'data', 'codepilot.db'),
+        // Old app-scoped data dir fallback
+        path.join(home, '.codepilot', 'codepilot.db'),
         // Legacy name
         path.join(home, 'Library', 'Application Support', 'CodePilot', 'claude-gui.db'),
         path.join(home, 'Library', 'Application Support', 'codepilot', 'claude-gui.db'),

@@ -197,7 +197,7 @@ function extractTokenUsage(msg: SDKResultMessage): TokenUsage | null {
 /**
  * Get file paths for non-image attachments. If the file already has a
  * persisted filePath (written by the uploads route), reuse it. Otherwise
- * fall back to writing the file to .codepilot-uploads/.
+ * fall back to writing the file to .codepal-uploads/.
  */
 function getUploadedFilePaths(files: FileAttachment[], workDir: string): string[] {
   const paths: string[] = [];
@@ -208,7 +208,7 @@ function getUploadedFilePaths(files: FileAttachment[], workDir: string): string[
     } else {
       // Fallback: write file to disk (should not happen in normal flow)
       if (!uploadDir) {
-        uploadDir = path.join(workDir, '.codepilot-uploads');
+        uploadDir = path.join(workDir, '.codepal-uploads');
         if (!fs.existsSync(uploadDir)) {
           fs.mkdirSync(uploadDir, { recursive: true });
         }
@@ -242,7 +242,7 @@ export function streamClaude(options: ClaudeStreamOptions): ReadableStream<strin
       try {
         // Build env for the Claude Code subprocess.
         // Start with process.env (includes user shell env from Electron's loadUserShellEnv).
-        // Then overlay any API config the user set in CodePilot settings (optional).
+        // Then overlay any API config the user set in codepal settings (optional).
         const sdkEnv: Record<string, string> = { ...process.env as Record<string, string> };
 
         // Ensure HOME/USERPROFILE are set so Claude Code can find ~/.claude/commands/

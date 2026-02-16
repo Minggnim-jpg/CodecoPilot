@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CodePilot",
+  title: "codepal",
   description: "A desktop GUI for Claude Code",
 };
 

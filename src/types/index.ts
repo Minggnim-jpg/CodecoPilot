@@ -169,6 +169,15 @@ export interface SendMessageRequest {
   mode?: string;
 }
 
+export interface MetaExplainRequest {
+  selectedText: string;
+  userQuestion?: string;
+  sessionId?: string;
+  workingDirectory?: string;
+  languageHint?: string;
+  contextLines?: string;
+}
+
 export interface UpdateMCPConfigRequest {
   mcpServers: Record<string, MCPServerConfig>;
 }

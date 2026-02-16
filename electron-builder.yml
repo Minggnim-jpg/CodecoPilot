@@ -1,5 +1,5 @@
-appId: com.codepilot.app
-productName: CodePilot
+appId: com.codepal.app
+productName: codepal
 directories:
   output: release
 files:
@@ -34,20 +34,20 @@ extraResources:
     filter: ["**/*"]
   - from: build/
     to: .
-    filter: ["icon.*"]
+    filter: ["codepal.*"]
 afterPack: scripts/after-pack.js
 asarUnpack:
   - "**/*.node"
   - "**/better-sqlite3/**"
 mac:
-  icon: build/icon.icns
+  icon: build/codepal.icns
   category: public.app-category.developer-tools
   artifactName: "${productName}-${version}-${arch}.${ext}"
   target:
     - target: dmg
       arch: [arm64, x64]
 win:
-  icon: build/icon.ico
+  icon: build/codepal.ico
   target:
     - target: nsis
       arch: [x64, arm64]
@@ -59,15 +59,15 @@ nsis:
   createStartMenuShortcut: true
   deleteAppDataOnUninstall: false
 linux:
-  icon: build/icon.png
+  icon: build/codepal.png
   category: Development
   artifactName: "${productName}-${version}-${arch}.${ext}"
   desktop:
     entry:
-      Name: CodePilot
+      Name: codepal
       Comment: A native desktop GUI for Claude Code
       Categories: Development;IDE;
-      StartupWMClass: codepilot
+      StartupWMClass: codepal
   target:
     - target: AppImage
       arch: [x64, arm64]

@@ -20,8 +20,9 @@ const MIME_TYPES: Record<string, string> = {
 };
 
 /**
- * Serve files from .codepilot-uploads/ directories.
- * Only allows reading from paths that contain '.codepilot-uploads/' to prevent directory traversal.
+ * Serve files from .codepal-uploads/ directories.
+ * Only allows reading from paths that contain '.codepal-uploads/' (or legacy '.codepilot-uploads/')
+ * to prevent directory traversal.
  */
 export async function GET(request: NextRequest) {
   const filePath = request.nextUrl.searchParams.get('path');
@@ -33,9 +34,9 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // Security: only allow files within .codepilot-uploads/ directories
+  // Security: only allow files within upload directories
   const resolved = path.resolve(filePath);
-  if (!resolved.includes('.codepilot-uploads')) {
+  if (!resolved.includes('.codepal-uploads') && !resolved.includes('.codepilot-uploads')) {
     return new Response(JSON.stringify({ error: 'Access denied' }), {
       status: 403,
       headers: { 'Content-Type': 'application/json' },
