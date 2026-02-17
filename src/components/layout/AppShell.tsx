@@ -285,10 +285,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <ResizeHandle side="right" onResize={handleRightPanelResize} onResizeEnd={handleRightPanelResizeEnd} />
               )}
               {isChatDetailRoute && <RightPanel width={rightPanelWidth} />}
+              <MetaPanel />
             </div>
 
             <SelectionPopover />
-            <MetaPanel />
             <UpdateDialog />
           </TooltipProvider>
         </MetaPanelProvider>
